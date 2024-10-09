@@ -25,6 +25,20 @@ bool IsKeyDown(int key);
 bool IsKeyUp(int key);
 bool IsKeyPressed(int key);
 
+Vector2* VertexGenerator(Vector2* vertices)
+{
+    Vector2* pos = new Vector2[4];
+    for (int i = 0; i <= 3; i++)
+    {
+
+        int current = i;
+        int nextV = (i + 1) % 4;
+
+        pos[current] = (vertices[current] + vertices[nextV]) * 0.5;
+    }
+    return pos;
+}
+
 int main(void)
 {
     // Lines 20-40 are all window creation. You can ignore this if you want ;)
@@ -48,37 +62,83 @@ int main(void)
     glDebugMessageCallback(glDebugOutput, nullptr);
 #endif
 
-    // Create a vertex shader, a fragment shader, and a shader program (vs + fs)
     GLuint vs = CreateShader(GL_VERTEX_SHADER, "./assets/shaders/default.vert");
+    GLuint vsLines = CreateShader(GL_VERTEX_SHADER, "./assets/shaders/lines.vert");
+    GLuint vsVertexPositionColor = CreateShader(GL_VERTEX_SHADER, "./assets/shaders/vertex_color.vert");
+    GLuint vsColorBufferColor = CreateShader(GL_VERTEX_SHADER, "./assets/shaders/buffer_color.vert");
+
+    // Fragment shaders:
+    GLuint fsLines = CreateShader(GL_FRAGMENT_SHADER, "./assets/shaders/lines.frag");
     GLuint fsUniformColor = CreateShader(GL_FRAGMENT_SHADER, "./assets/shaders/uniform_color.frag");
-    GLuint vsVertexColor = CreateShader(GL_VERTEX_SHADER, "./assets/shaders/vertex_color.vert");
     GLuint fsVertexColor = CreateShader(GL_FRAGMENT_SHADER, "./assets/shaders/vertex_color.frag");
+
+    // Shader programs:
     GLuint shaderUniformColor = CreateProgram(vs, fsUniformColor);
-    GLuint shaderVertexColor = CreateProgram(vsVertexColor, fsVertexColor);
+    GLuint shaderVertexPositionColor = CreateProgram(vsVertexPositionColor, fsVertexColor);
+    GLuint shaderVertexBufferColor = CreateProgram(vsColorBufferColor, fsVertexColor);
+    GLuint shaderLines = CreateProgram(vsLines, fsLines);
 
     // Positions of our triangle's (3D) vertices (CCW winding-order)
     Vector3 positions[] =
     {
         0.5f, -0.5f, 0.0f,  // vertex 1 (bottom-right)
         0.0f, 0.5f, 0.0f,   // vertex 2 (top-middle)
-        -0.5f, -0.5f, 0.0   // vertex 3 (bottom-left)
+        -0.5f, -0.5f, 0.0f  // vertex 3 (bottom-left)
     };
 
-    // vao = "Vertex Array Object", vbo = "Vertex Buffer Object"
-    // A vao is a collection of vbos.
-    GLuint vao, vbo;
+    // Colours of our triangle's vertices (xyz = rgb)
+    Vector3 colours[] =
+    {
+        1.0f, 0.0f, 0.0f,   // vertex 1
+        0.0f, 1.0f, 0.0f,   // vertex 2
+        0.0f, 0.0f, 1.0f    // vertex 3
+    };
+
+    Vector2 curr[4]
+    {
+        { -1.0f,  1.0f },   // top-left
+        {  1.0f,  1.0f },   // top-right
+        {  1.0f, -1.0f },   // bot-right
+        { -1.0f, -1.0f }    // bot-left
+    };
+
+    Vector2 next[4]
+    {
+        (curr[0] + curr[1]) * 0.5f,
+        (curr[1] + curr[2]) * 0.5f,
+        (curr[2] + curr[3]) * 0.5f,
+        (curr[3] + curr[0]) * 0.5f
+    };
+
+    // vao = "Vertex Array Object". A vao is a collection of vbos.
+    // vbo = "Vertex Buffer Object". "Buffer" generally means "group of memory".
+    // A vbo is a piece of graphics memory VRAM.
+    GLuint vao, pbo, cbo;       // pbo = "position buffer object", "cbo = color buffer object"
     glGenVertexArrays(1, &vao); // Allocate a vao handle
-    glBindVertexArray(vao);     // Bind the vao - tells the GPU we want to work with this vao!
-    glGenBuffers(1, &vbo);      // Allocate a vbo handle
-    glBindBuffer(GL_ARRAY_BUFFER, vbo); // Bind the vbo - tells the gpu which data we want in our vao.
+    glBindVertexArray(vao);     // Bind = "associate all bound buffer object with the current array object"
 
-    // Uploads data to the bound vbo - 9 3d floating-points as positions!
-    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(Vector3), positions, GL_STATIC_DRAW);
+    // Create position buffer:
+    glGenBuffers(1, &pbo);              // Allocate a vbo handle
+    glBindBuffer(GL_ARRAY_BUFFER, pbo); // Associate this buffer with the bound vertex array
+    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(Vector3), positions, GL_STATIC_DRAW);  // Upload the buffer
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3), 0);          // Describe the buffer
+    glEnableVertexAttribArray(0);
 
-    // Describes the data of the bound vbo - attribute 0, 3-component floating-point number
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), 0);
+    // Create color buffer:
+    glGenBuffers(1, &cbo);              // Allocate a vbo handle
+    glBindBuffer(GL_ARRAY_BUFFER, cbo); // Associate this buffer with the bound vertex array
+    glBufferData(GL_ARRAY_BUFFER, 3 * sizeof(Vector3), colours, GL_STATIC_DRAW);    // Upload the buffer
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3), 0);          // Describe the buffer
+    glEnableVertexAttribArray(1);
 
-    // Enable the attribute we just bound (all attributes are disabled by default)!
+    GLuint vaoLines, pboLines, cboLines;
+    glGenVertexArrays(1, &vaoLines);
+    glBindVertexArray(vaoLines);
+
+    glGenBuffers(1, &pboLines);
+    glBindBuffer(GL_ARRAY_BUFFER, pboLines);
+    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(Vector2), curr, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vector2), nullptr);
     glEnableVertexAttribArray(0);
 
     // In summary, we need 3 things to render:
@@ -88,12 +148,18 @@ int main(void)
     // *** Everything is just data and behaviour ***
     // *** vao & vbo describe data, shaders describe behaviour ***
 
-    GLint u_world = glGetUniformLocation(shaderUniformColor, "u_world");
+    // Fetch handles to uniform ("constant") variables.
+    // OpenGL handles are like addresses (&) in c++ -- they tell us the location of our data on the GPU.
+    // In the case of uniforms, we need to know their handle (location) before we can use them!
     GLint u_color = glGetUniformLocation(shaderUniformColor, "u_color");
     GLint u_intensity = glGetUniformLocation(shaderUniformColor, "u_intensity");
 
     int object = 0;
     printf("Object %i\n", object + 1);
+
+    Matrix view = LookAt({ 0.0f, 0.0f, 5.0f }, V3_ZERO, V3_UP);
+    Matrix proj = Ortho(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 10.0f);
+    // Optional homework: use the Perspective function to see how the projection changes!
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -102,73 +168,125 @@ int main(void)
         glClear(GL_COLOR_BUFFER_BIT);
 
         float time = glfwGetTime();
-        Matrix world = MatrixIdentity();
 
-        static float Scale = 0.0f;
-        static float Delta = 0.005f;
-        static float angle = 1.0f;
+        // Interpolation parameter (0 means fully A, 1 means fully B)
+        float a = cosf(time) * 0.5f + 0.5f;
 
-        
+        // Interpolate scale
+        Vector3 sA = V3_ONE;
+        Vector3 sB = V3_ONE * 10.0f;
+        Vector3 sC = Lerp(sA, sB, a);
+
+        // Interpolate rotation (slerp = "spherical lerp" because we rotate in a circle) 
+        Quaternion rA = QuaternionIdentity();
+        Quaternion rB = FromEuler(0.0f, 0.0f, 90.0f * DEG2RAD);
+        Quaternion rC = Slerp(rA, rB, a);
+
+        // Interpolate translation
+        Vector3 tA = { -10.0f, 0.0f, 0.0f };
+        Vector3 tB = { 10.0f, 0.0f, 0.0f };
+        Vector3 tC = Lerp(tA, tB, a);
+
+        // Interpolate color
+        Vector3 cA = V3_UP;
+        Vector3 cB = V3_FORWARD;
+        Vector3 cC = Lerp(cA, cB, a);
+
+        Matrix s = Scale(sC);
+        Matrix r = ToMatrix(rC);
+        Matrix t = Translate(tC);
+
+        Matrix world = s * r * t;
+        Matrix mvp = world * view * proj;
+        GLint u_mvp = GL_NONE;
+
+        // Vertices
+        Vector2* vertices = VertexGenerator(next);
+        Vector2* vertices1 = VertexGenerator(vertices);
+        Vector2* vertices2 = VertexGenerator(vertices1);
+        Vector2* vertices3 = VertexGenerator(vertices2);
+        Vector2* vertices4 = VertexGenerator(vertices3);
+        Vector2* vertices5 = VertexGenerator(vertices4);
+
+        GLuint shaderProgram = GL_NONE;
 
         switch (object + 1)
         {
-        // Hint: Change the colour to white
         case 1:
-            glUseProgram(shaderUniformColor);
-            glUniformMatrix4fv(u_world, 1, GL_FALSE, ToFloat16(world).v);
-            glUniform3f(u_color, 1.0f, 1.0f, 1.0f);
-            glUniform1f(u_intensity, 1.0f);
+            shaderProgram = shaderVertexBufferColor;
+            glUseProgram(shaderProgram);
+            u_mvp = glGetUniformLocation(shaderProgram, "u_mvp");
+            glUniformMatrix4fv(u_mvp, 1, GL_FALSE, ToFloat16(mvp).v);
+            //glUniform3fv(u_color, 1, &cC.x);
+            //glUniform1f(u_intensity, a);
+            glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 3);
             break;
 
-        // Hint: Switch the shader to colour based on vertex positions
-        // If you get errors in the console, comment out all unused uniforms
         case 2:
-            glUseProgram(shaderVertexColor);
-            glUniformMatrix4fv(u_world, 1, GL_FALSE, ToFloat16(world).v);
-            //glUniform3f(u_color, 0.0f, 0.0f, 0.0f);
+            shaderProgram = shaderVertexBufferColor;
+            glUseProgram(shaderProgram);
+            u_mvp = glGetUniformLocation(shaderProgram, "u_mvp");
+            glUniformMatrix4fv(u_mvp, 1, GL_FALSE, ToFloat16(mvp).v);
+            //glUniform3fv(u_color, 1, &cC.x);
             //glUniform1f(u_intensity, 1.0f);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glBindVertexArray(vao);
+            glDrawArrays(GL_LINE_LOOP, 0, 3);
             break;
 
-        // Hint: Make intensity change from 0 to 1 using a periodic function (sin or cos)
         case 3:
-            glUseProgram(shaderUniformColor);
-            glUniformMatrix4fv(u_world, 1, GL_FALSE, ToFloat16(world).v);
-            glUniform3f(u_color, 0.0f, 0.0f, 1.0f);
-            glUniform1f(u_intensity, sin(time) * 2);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            // TODO -- read up on glBufferSubData to understand what on earth just happened ;)
+            shaderProgram = shaderLines;
+            glUseProgram(shaderProgram);
+            glUniform1f(glGetUniformLocation(shaderProgram, "u_a"), a);
+            glLineWidth(10.0f);
+            glBindVertexArray(vaoLines);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), curr);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), next);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices1);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices2);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices3);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices4);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(Vector2), vertices5);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+
             break;
 
-        // Hint: Use the Translate function
         case 4:
-            glUseProgram(shaderUniformColor);
-            Scale += Delta;
-            if ((Scale > 1.0f) || (Scale < -1.0f))
-            {
-                Delta *= -1.0f;
-            }
-
-            world = Translate(Scale, 0.0f, 0.0f);
-            glUniformMatrix4fv(u_world, 1, GL_FALSE, ToFloat16(world).v);
-            glUniform3f(u_color, 1.0f, 0.0f, 1.0f);
-            glUniform1f(u_intensity, 1.0f);
-            
+            shaderProgram = shaderUniformColor;
+            glUseProgram(shaderProgram);
+            u_mvp = glGetUniformLocation(shaderProgram, "u_mvp");
+            glUniformMatrix4fv(u_mvp, 1, GL_FALSE, ToFloat16(mvp).v);
+            glUniform3fv(u_color, 1, &cC.x);
+            glUniform1f(u_intensity, 1.0);
+            glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 3);
-            
             break;
 
-        // Hint: Use the RotateZ function
         case 5:
-            glUseProgram(shaderUniformColor);
-            
-            angle = angle + 0.1f;
-            world = RotateZ(angle);
-            glUniformMatrix4fv(u_world, 1, GL_FALSE, ToFloat16(world).v);
-            glUniform3f(u_color, 0.0f, 1.0f, 1.0f);
-            glUniform1f(u_intensity, 1.0f);
+            shaderProgram = shaderUniformColor;
+            glUseProgram(shaderProgram);
+            u_mvp = glGetUniformLocation(shaderProgram, "u_mvp");
+            glUniformMatrix4fv(u_mvp, 1, GL_FALSE, ToFloat16(mvp).v);
+            glUniform3fv(u_color, 1, &cC.x);
+            glUniform1f(u_intensity, 1.0f - a);
+            glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 3);
-            
             break;
         }
 
@@ -341,4 +459,12 @@ bool IsKeyUp(int key)
 bool IsKeyPressed(int key)
 {
     return gKeysPrev[key] == GLFW_PRESS && gKeysCurr[key] == GLFW_RELEASE;
+}
+
+void Print(Matrix m)
+{
+    printf("%f %f %f %f\n", m.m0, m.m4, m.m8, m.m12);
+    printf("%f %f %f %f\n", m.m1, m.m5, m.m9, m.m13);
+    printf("%f %f %f %f\n", m.m2, m.m6, m.m10, m.m14);
+    printf("%f %f %f %f\n\n", m.m3, m.m7, m.m11, m.m15);
 }
